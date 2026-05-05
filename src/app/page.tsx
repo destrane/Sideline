@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { usePrice } from "@/hooks/usePrice";
-import { SIDELINE_CA, DEXSCREENER_CHART_URL } from "@/lib/constants";
+import { SIDELINE_CA } from "@/lib/constants";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -28,22 +28,159 @@ function formatTime(date: Date): string {
   });
 }
 
-function formatMonth(): string {
-  return new Date().toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
+// ─── Bench SVG ───────────────────────────────────────────────────────────────
+
+function BenchIcon() {
+  return (
+    <svg width="36" height="24" viewBox="0 0 36 24" fill="none" aria-hidden="true">
+      {/* Back rest */}
+      <rect x="2" y="1" width="32" height="5" rx="2" fill="#7A5C18" />
+      {/* Back supports */}
+      <rect x="6"  y="6" width="3" height="4" rx="1" fill="#5E4510" />
+      <rect x="27" y="6" width="3" height="4" rx="1" fill="#5E4510" />
+      {/* Seat */}
+      <rect x="0" y="10" width="36" height="5" rx="2" fill="#8B6820" />
+      {/* Legs */}
+      <rect x="5"  y="15" width="4" height="8" rx="1.5" fill="#5E4510" />
+      <rect x="27" y="15" width="4" height="8" rx="1.5" fill="#5E4510" />
+    </svg>
+  );
 }
 
-// ─── Skeleton block ───────────────────────────────────────────────────────────
+// ─── Sideline field ───────────────────────────────────────────────────────────
+// Shows a top-down strip of a sports field.
+// Entry (bench) is anchored at the sideline boundary.
+// The live price ball moves along the field based on % change.
+
+function SidelineField({
+  entryPrice,
+  livePrice,
+  percentChange,
+}: {
+  entryPrice: number | null;
+  livePrice: number | null;
+  percentChange: number | null;
+}) {
+  const BENCH_POS = 19; // % from left — the sideline boundary
+
+  // 1% price change → ~0.45% movement on the track, with a +5% nudge so the
+  // ball starts just inside the field at 0% change.
+  const rawChange = percentChange ?? 0;
+  const livePos = Math.max(6, Math.min(92, BENCH_POS + rawChange * 0.45 + 5));
+
+  const isUp = rawChange > 0;
+  const isDown = rawChange < 0;
+  const ballColor = isUp ? "#5CAF72" : isDown ? "#CF5050" : "#888";
+  const ballGlow = isUp ? "#5CAF7240" : isDown ? "#CF505040" : "#88888830";
+
+  // Labels only show when the markers aren't crowding each other
+  const markersApart = Math.abs(livePos - BENCH_POS) > 12;
+
+  const yardLines = [30, 40, 50, 60, 70, 80, 90];
+
+  return (
+    <div className="mb-8">
+      {/* Field strip */}
+      <div className="relative h-[88px] overflow-hidden rounded-sm border border-[#162A11] bg-[#0C1A09]">
+
+        {/* Sideline zone (left of bench) */}
+        <div
+          className="absolute top-0 bottom-0 bg-[#0A1508] border-r border-[#1E3A18]"
+          style={{ width: `${BENCH_POS}%` }}
+        >
+          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[7px] tracking-[0.25em] uppercase font-mono text-[#1D2E18] whitespace-nowrap select-none">
+            Sideline
+          </span>
+        </div>
+
+        {/* Yard lines on the field */}
+        {yardLines.map((pos) => (
+          <div
+            key={pos}
+            className="absolute top-3 bottom-3 w-px bg-[#163012] opacity-70"
+            style={{ left: `${pos}%` }}
+          />
+        ))}
+
+        {/* Dotted trail between bench and ball */}
+        {Math.abs(livePos - BENCH_POS) > 3 && (
+          <div
+            className="absolute top-1/2 -translate-y-1/2 h-px border-t border-dashed opacity-20"
+            style={{
+              left: `${Math.min(BENCH_POS, livePos) + 1}%`,
+              width: `${Math.abs(livePos - BENCH_POS) - 1}%`,
+              borderColor: ballColor,
+            }}
+          />
+        )}
+
+        {/* Entry — bench icon pinned at the boundary */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex flex-col items-center gap-[3px]"
+          style={{ left: `${BENCH_POS}%` }}
+        >
+          <BenchIcon />
+          <div className="w-3 h-3 rounded-full border-2 border-[#3A3A3A] bg-[#1C1C1C]" />
+        </div>
+
+        {/* Live price ball — moves across the field */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-all duration-700 ease-out"
+          style={{ left: `${livePos}%` }}
+        >
+          <div
+            className="w-6 h-6 rounded-full border-2 animate-live-pulse"
+            style={{
+              backgroundColor: ballColor,
+              borderColor: ballColor,
+              boxShadow: `0 0 14px ${ballGlow}`,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Price labels below the field */}
+      <div className="relative h-9 mt-1 overflow-hidden">
+        {/* Entry label */}
+        <div
+          className="absolute -translate-x-1/2 text-center"
+          style={{ left: `${BENCH_POS}%` }}
+        >
+          <span className="block text-[7px] tracking-[0.3em] uppercase font-mono text-[#333]">
+            {markersApart ? "Entry" : ""}
+          </span>
+          <span className="block text-[9px] font-mono text-[#444]">
+            {markersApart && entryPrice !== null ? formatPrice(entryPrice) : ""}
+          </span>
+        </div>
+
+        {/* Live label */}
+        <div
+          className="absolute -translate-x-1/2 text-center transition-all duration-700 ease-out"
+          style={{ left: `${livePos}%` }}
+        >
+          <span
+            className="block text-[7px] tracking-[0.3em] uppercase font-mono"
+            style={{ color: ballColor }}
+          >
+            Now
+          </span>
+          <span
+            className="block text-[9px] font-mono"
+            style={{ color: ballColor }}
+          >
+            {livePrice !== null ? formatPrice(livePrice) : ""}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Skeleton ────────────────────────────────────────────────────────────────
 
 function Skeleton({ w, h }: { w: string; h: string }) {
-  return (
-    <div
-      className={`${w} ${h} rounded-sm bg-[#161616] animate-pulse`}
-      aria-hidden="true"
-    />
-  );
+  return <div className={`${w} ${h} rounded-sm bg-[#161616] animate-pulse`} aria-hidden />;
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -62,7 +199,6 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [flashKey, setFlashKey] = useState(0);
 
-  // Flash the live price whenever it updates
   useEffect(() => {
     if (livePrice !== null) setFlashKey((k) => k + 1);
   }, [livePrice]);
@@ -73,126 +209,127 @@ export default function Home() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard API unavailable — silent fail
+      // Clipboard unavailable — silent fail
     }
   }, []);
 
   const isUp = percentChange !== null && percentChange > 0;
   const isDown = percentChange !== null && percentChange < 0;
-  const changeColor = isUp
-    ? "text-up"
-    : isDown
-    ? "text-down"
-    : "text-[#888]";
+  const changeHex = isUp ? "#5CAF72" : isDown ? "#CF5050" : "#888";
 
   return (
-    <main className="min-h-screen bg-bg text-text-primary">
-      <div className="max-w-[640px] mx-auto px-6 py-16 sm:py-24 animate-fade-in">
+    <main className="min-h-screen bg-[#0A0A0A] text-[#EBEBEB]">
+      <div className="max-w-[580px] mx-auto px-6 py-14 sm:py-20 animate-fade-in">
 
         {/* ── Header ── */}
-        <header className="flex items-baseline justify-between mb-28 sm:mb-36">
-          <span className="text-[11px] tracking-[0.35em] uppercase font-sans font-medium text-text-primary">
+        <header className="flex items-baseline justify-between mb-10">
+          <span className="text-[11px] tracking-[0.35em] uppercase font-sans font-medium">
             Sideline
           </span>
-          <span className="text-[10px] tracking-[0.25em] uppercase font-mono text-text-faint">
-            {formatMonth()}
+          <span className="text-[10px] tracking-[0.25em] uppercase font-mono text-[#333]">
+            {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
           </span>
         </header>
 
-        {/* ── Tagline ── */}
-        <p className="text-[13px] tracking-[0.15em] uppercase text-text-muted mb-20 sm:mb-24 font-sans font-light">
-          Priced from the moment you arrived.
-        </p>
+        {/* ── Scoreboard ── */}
+        <div className="border border-[#202020] mb-2 bg-[#0D0D0D]">
 
-        {/* ── Price section ── */}
-        {loading ? (
-          <section className="space-y-14 mb-24" aria-label="Loading prices">
-            <div>
-              <Skeleton w="w-24" h="h-2.5" />
-              <div className="mt-4">
-                <Skeleton w="w-44" h="h-10" />
-              </div>
+          {/* Top bar */}
+          <div className="flex items-center justify-between border-b border-[#181818] px-4 py-2.5">
+            <span className="text-[9px] tracking-[0.35em] uppercase font-mono text-[#3A3A3A]">
+              Scoreboard
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#5CAF72] animate-live-pulse" />
+              <span className="text-[8px] tracking-widest font-mono text-[#3A3A3A] uppercase">Live</span>
+            </span>
+          </div>
+
+          {/* Price columns */}
+          {loading ? (
+            <div className="p-5 space-y-3">
+              <Skeleton w="w-28" h="h-2.5" />
+              <Skeleton w="w-44" h="h-9" />
             </div>
-            <div>
-              <Skeleton w="w-16" h="h-2.5" />
-              <div className="mt-4">
-                <Skeleton w="w-44" h="h-10" />
-              </div>
-            </div>
-          </section>
-        ) : error ? (
-          <section className="mb-24">
-            <p className="font-mono text-sm text-text-muted leading-relaxed">
+          ) : error ? (
+            <div className="p-5 font-mono text-sm text-[#555]">
               {error}
-            </p>
-            <button
-              onClick={resetSession}
-              className="mt-5 text-[10px] tracking-[0.2em] uppercase font-mono text-text-faint hover:text-text-secondary transition-colors duration-200"
-            >
-              Try again
-            </button>
-          </section>
-        ) : (
-          <section className="mb-24 space-y-14" aria-label="Price data">
-
-            {/* Entry price */}
-            <div>
-              <p className="text-[10px] tracking-[0.3em] uppercase font-sans text-text-muted mb-3.5">
-                Entry price
-              </p>
-              <p className="font-mono text-[2.6rem] sm:text-[3rem] leading-none text-text-secondary tracking-tight">
-                {entryPrice !== null ? formatPrice(entryPrice) : "—"}
-              </p>
-            </div>
-
-            {/* Live price */}
-            <div>
-              <p className="text-[10px] tracking-[0.3em] uppercase font-sans text-text-muted mb-3.5 flex items-center gap-2.5">
-                Live
-                <span
-                  className="block w-1.5 h-1.5 rounded-full bg-up animate-live-pulse"
-                  aria-label="Live"
-                />
-              </p>
-              <p
-                key={flashKey}
-                className="font-mono text-[2.6rem] sm:text-[3rem] leading-none text-text-primary tracking-tight animate-flash"
+              <button
+                onClick={resetSession}
+                className="block mt-3 text-[9px] tracking-widest uppercase text-[#3A3A3A] hover:text-[#666] transition-colors"
               >
-                {livePrice !== null ? formatPrice(livePrice) : "—"}
-              </p>
+                Try again
+              </button>
             </div>
+          ) : (
+            <div className="grid grid-cols-2 divide-x divide-[#181818]">
 
-            {/* Percent change */}
-            {percentChange !== null && (
-              <div>
-                <p className={`font-mono text-2xl sm:text-3xl leading-none ${changeColor}`}>
-                  {formatPercent(percentChange)}
+              {/* Saw it at */}
+              <div className="px-4 py-5">
+                <p className="text-[8px] tracking-[0.35em] uppercase font-mono text-[#3A3A3A] mb-2.5">
+                  Saw it at
                 </p>
-                <p className="text-[10px] tracking-[0.25em] uppercase font-sans text-text-faint mt-2.5">
-                  since you arrived
+                <p className="font-mono text-[1.7rem] sm:text-[2rem] text-[#5A5A5A] leading-none">
+                  {entryPrice !== null ? formatPrice(entryPrice) : "—"}
                 </p>
               </div>
-            )}
 
-          </section>
+              {/* Now at */}
+              <div className="px-4 py-5">
+                <p className="text-[8px] tracking-[0.35em] uppercase font-mono text-[#3A3A3A] mb-2.5">
+                  Now at
+                </p>
+                <p
+                  key={flashKey}
+                  className="font-mono text-[1.7rem] sm:text-[2rem] text-[#EBEBEB] leading-none animate-flash"
+                >
+                  {livePrice !== null ? formatPrice(livePrice) : "—"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Change footer */}
+          {!loading && !error && percentChange !== null && (
+            <div className="border-t border-[#181818] px-4 py-3 flex items-center gap-3">
+              <span
+                className="font-mono text-xl font-bold"
+                style={{ color: changeHex }}
+              >
+                {formatPercent(percentChange)}
+              </span>
+              <span className="text-[8px] tracking-[0.25em] uppercase font-mono text-[#333]">
+                since you sat down
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* ── Sideline field ── */}
+        {!loading && !error && (
+          <SidelineField
+            entryPrice={entryPrice}
+            livePrice={livePrice}
+            percentChange={percentChange}
+          />
         )}
 
         {/* ── Divider ── */}
-        <div className="border-t border-border-subtle mb-14" />
+        <div className="border-t border-[#1A1A1A] mb-10" />
 
-        {/* ── Contract address ── */}
-        <section className="mb-14">
-          <p className="text-[10px] tracking-[0.3em] uppercase font-sans text-text-muted mb-4">
+        {/* ── Contract ── */}
+        <section className="mb-10">
+          <p className="text-[9px] tracking-[0.3em] uppercase font-mono text-[#3A3A3A] mb-3.5">
             Contract
           </p>
-          <div className="flex items-start justify-between gap-6">
-            <p className="font-mono text-[11px] text-text-secondary leading-relaxed break-all">
+          <div className="flex items-start justify-between gap-4">
+            <p className="font-mono text-[11px] text-[#777] break-all leading-relaxed">
               {SIDELINE_CA}
             </p>
             <button
               onClick={copyCA}
               aria-label="Copy contract address"
-              className="shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase border border-border-dim text-text-muted hover:text-text-primary hover:border-[#3A3A3A] transition-colors duration-200 px-3 py-1.5 mt-0.5"
+              className="shrink-0 font-mono text-[9px] tracking-[0.2em] uppercase border border-[#252525] text-[#444] hover:text-[#EBEBEB] hover:border-[#3A3A3A] transition-colors duration-200 px-3 py-1.5"
             >
               {copied ? "Copied" : "Copy"}
             </button>
@@ -200,36 +337,17 @@ export default function Home() {
         </section>
 
         {/* ── Divider ── */}
-        <div className="border-t border-border-subtle mb-14" />
-
-        {/* ── Actions ── */}
-        <section className="flex items-center justify-between mb-28 sm:mb-36">
-          {/* Buy button — replace href="#" with your DEX link */}
-          <a
-            href="#"
-            className="font-sans text-[11px] tracking-[0.25em] uppercase border border-border-dim text-text-primary hover:border-[#4A4A4A] px-6 py-3 transition-colors duration-200"
-          >
-            Buy Sideline
-          </a>
-          <a
-            href={DEXSCREENER_CHART_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-sans text-[11px] tracking-[0.25em] uppercase text-text-muted hover:text-text-secondary transition-colors duration-200"
-          >
-            View Chart&nbsp;↗
-          </a>
-        </section>
+        <div className="border-t border-[#1A1A1A] mb-8" />
 
         {/* ── Footer ── */}
         <footer className="flex items-center justify-between">
-          <span className="font-mono text-[10px] text-text-faint tracking-wider">
+          <span className="font-mono text-[9px] text-[#2A2A2A] tracking-wider">
             {lastUpdated ? `Updated ${formatTime(lastUpdated)}` : ""}
           </span>
           <button
             onClick={resetSession}
-            className="font-mono text-[10px] tracking-[0.2em] uppercase text-text-faint hover:text-text-muted transition-colors duration-200"
-            title="Clears your frozen entry price and re-records it fresh"
+            className="font-mono text-[9px] tracking-[0.2em] uppercase text-[#2A2A2A] hover:text-[#555] transition-colors duration-200"
+            title="Clears your frozen entry price and re-records fresh"
           >
             Reset session
           </button>
