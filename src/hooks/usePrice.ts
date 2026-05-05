@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
+  SIDELINE_CA,
   DEXSCREENER_API_URL,
   ENTRY_PRICE_KEY,
   PRICE_POLL_INTERVAL,
@@ -22,7 +23,20 @@ interface DexPair {
   liquidity?: { usd: number };
 }
 
+// Demo mode: returns a slowly drifting price so the UI is visible before the
+// real CA is added. Remove this block (or just replace the CA) to go live.
+const DEMO_BASE = 0.00000142;
+let _demoPrice = DEMO_BASE;
+function fetchDemoPrice(): number {
+  _demoPrice = _demoPrice * (1 + (Math.random() - 0.48) * 0.004);
+  return _demoPrice;
+}
+
 async function fetchLivePrice(): Promise<number> {
+  if (SIDELINE_CA === "PASTE_CONTRACT_ADDRESS_HERE") {
+    return fetchDemoPrice();
+  }
+
   const res = await fetch(DEXSCREENER_API_URL, { cache: "no-store" });
   if (!res.ok) throw new Error(`API error (${res.status})`);
 
